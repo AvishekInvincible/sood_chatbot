@@ -4,7 +4,6 @@ import cors from 'cors';
 import fetch from 'node-fetch';
 import dotenv from 'dotenv';
 import rateLimit from 'express-rate-limit';
-import fs from 'fs';
 import multer from 'multer';
 import FormData from 'form-data';
 
@@ -34,13 +33,13 @@ app.use(express.json());
 app.use(express.static('public'));
 app.use(limiter);
 
-// Configure multer for audio uploads
-const uploadMiddleware = multer({ dest: 'uploads/' });
-
-// Create uploads directory if it doesn't exist
-if (!fs.existsSync('uploads')) {
-    fs.mkdirSync('uploads');
-}
+// Configure multer to use memory storage instead of disk storage
+const uploadMiddleware = multer({
+    storage: multer.memoryStorage(),
+    limits: {
+        fileSize: 5 * 1024 * 1024 // 5MB limit
+    }
+});
 
 // Error handling middleware
 app.use((err, req, res, next) => {
@@ -321,17 +320,19 @@ app.post('/transcribe', uploadMiddleware.single('audio'), async (req, res) => {
             return res.status(400).json({ error: 'No audio file provided' });
         }
 
-        // Here you can process the audio file with your preferred method
-        // For now, we'll just echo back a simple response
-        const defaultText = "Audio received and processed";
-        
-        // Clean up the temporary file
-        fs.unlinkSync(req.file.path);
+        // Create form data with the audio buffer
+        const formData = new FormData();
+        formData.append('file', req.file.buffer, {
+            filename: 'audio.webm',
+            contentType: req.file.mimetype
+        });
+        formData.append('model', 'whisper-1');
 
+        const defaultText = "Audio received and processed";
         res.json({ text: defaultText });
     } catch (error) {
-        console.error('Transcription error:', error);
-        res.status(500).json({ error: 'Error processing audio' });
+        console.error('Error processing audio:', error);
+        res.status(500).json({ error: 'Error processing audio file' });
     }
 });
 
