@@ -13,6 +13,9 @@ dotenv.config();
 const app = express();
 const port = process.env.PORT || 3000;
 
+// Trust proxy - required for rate limiting behind reverse proxies (like on Vercel)
+app.set('trust proxy', 1);
+
 // Initialize Groq
 const groq = new Groq({
     apiKey: process.env.GROQ_API_KEY
@@ -21,7 +24,14 @@ const groq = new Groq({
 // Rate limiting
 const limiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 100 // limit each IP to 100 requests per windowMs
+    max: 100, // limit each IP to 100 requests per windowMs
+    standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
+    legacyHeaders: false, // Disable the `X-RateLimit-*` headers
+    handler: (req, res) => {
+        res.status(429).json({
+            error: 'Too many requests, please try again later.'
+        });
+    }
 });
 
 // Store chat history (in memory - consider using a database for production)
