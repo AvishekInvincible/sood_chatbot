@@ -51,6 +51,11 @@ const uploadMiddleware = multer({
     }
 });
 
+// Serve index.html for root route
+app.get('/', (req, res) => {
+    res.sendFile('index.html', { root: './public' });
+});
+
 // Error handling middleware
 app.use((err, req, res, next) => {
     console.error(err.stack);

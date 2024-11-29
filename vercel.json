@@ -16,8 +16,16 @@
             "dest": "/public/favicon.ico"
         },
         {
+            "src": "/static/(.*)",
+            "dest": "/public/$1"
+        },
+        {
+            "src": "/(.*\\.(js|css|png|jpg|gif|ico)$)",
+            "dest": "/public/$1"
+        },
+        {
             "src": "/(.*)",
-            "dest": "server.js"
+            "dest": "/server.js"
         }
     ]
 }
