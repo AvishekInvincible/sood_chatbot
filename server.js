@@ -215,7 +215,7 @@ app.post('/init', async (req, res) => {
 // Chat endpoint with history
 app.post('/chat', async (req, res) => {
     try {
-        const { message, sessionId, voiceSettings, model, voiceId, selectedRole, ttsEnabled } = req.body;
+        const { message, sessionId, voiceSettings, voiceId, selectedRole, ttsEnabled } = req.body;
         
         if (!message) {
             return res.status(400).json({ error: 'Message is required' });
@@ -239,7 +239,7 @@ app.post('/chat', async (req, res) => {
                     ...history,
                     { role: "user", content: message }
                 ],
-                model: model || "mixtral-8x7b-32768",
+                model: "mixtral-8x7b-32768",
                 temperature: 0.7,
                 max_tokens: 1024,
                 top_p: 1,

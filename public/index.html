@@ -762,23 +762,19 @@
             addTypingIndicator();
 
             try {
-                const selectedRole = modelSelect.options[modelSelect.selectedIndex].text;
-                const selectedModel = roleToModel[selectedRole] || 'llama-3.1-70b-versatile';
-                const selectedVoiceId = voiceSelect.value;
-
+                const selectedRole = document.getElementById('modelSelect').value;
                 const response = await fetch('/chat', {
                     method: 'POST',
                     headers: {
-                        'Content-Type': 'application/json',
+                        'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({
                         message: text,
-                        sessionId: 'default-session',
-                        model: selectedModel,
-                        voiceId: selectedVoiceId,
-                        selectedRole,
-                        ttsEnabled: true
-                    }),
+                        sessionId: 'session-' + Date.now(),
+                        selectedRole: selectedRole,
+                        ttsEnabled: document.getElementById('ttsToggle').checked,
+                        voiceId: document.getElementById('voiceSelect').value
+                    })
                 });
 
                 // Remove typing indicator
@@ -804,12 +800,16 @@
                 const data = await response.json();
                 
                 // Add bot response to chat
-                addMessage(data.text, 'bot');
+                if (data.reply) {
+                    addMessage(data.reply, 'assistant');
+                }
 
                 // Play audio if available
-                if (data.audioChunks) {
-                    audioQueue = [...data.audioChunks];
-                    playNextInQueue();
+                if (data.audioUrl) {
+                    const audio = new Audio(data.audioUrl);
+                    audio.play().catch(error => {
+                        console.error('Error playing audio:', error);
+                    });
                 }
             } catch (error) {
                 console.error('Error:', error);
@@ -822,7 +822,7 @@
             const chatContainer = document.querySelector('.chat-container');
             const messageDiv = document.createElement('div');
             messageDiv.classList.add('message');
-            messageDiv.classList.add(sender === 'user' ? 'user-message' : sender === 'bot' ? 'bot-message' : 'error-message');
+            messageDiv.classList.add(sender === 'user' ? 'user-message' : sender === 'assistant' ? 'bot-message' : 'error-message');
             messageDiv.textContent = text;
             chatContainer.appendChild(messageDiv);
             chatContainer.scrollTop = chatContainer.scrollHeight;
@@ -830,12 +830,19 @@
 
         // Event Listeners
         messageInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
-                sendMessage();
+            if (e.key === 'Enter' && messageInput.value.trim()) {
+                const text = messageInput.value.trim();
+                sendMessage(text);
             }
         });
 
-        sendButton.addEventListener('click', () => sendMessage());
+        sendButton.addEventListener('click', () => {
+            const text = messageInput.value.trim();
+            if (text) {
+                sendMessage(text);
+            }
+        });
+
         recordButton.addEventListener('click', startRecording);
         stopButton.addEventListener('click', () => {
             stopRecording();
