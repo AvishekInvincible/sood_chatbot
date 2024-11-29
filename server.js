@@ -106,6 +106,17 @@ async function generateSpeech(text, voiceSettings = {}, voiceId) {
     }
 }
 
+// Voice mappings for different roles
+const roleToVoice = {
+    'lawyer': 'ErXwobaYiN019PkySvjV', // Josh
+    'doctor': 'EXAVITQu4vr4xnSDxMaL', // Bella
+    'tutor': '21m00Tcm4TlvDq8ikWAM', // Rachel
+    'engineer': 'VR6AewLTigWG4xSOukaG', // Adam
+    'financial': 'EXAVITQu4vr4xnSDxMaL', // Bella
+    'writer': '21m00Tcm4TlvDq8ikWAM', // Rachel
+    'tax': 'ErXwobaYiN019PkySvjV' // Josh
+};
+
 // Preset prompts for different roles
 const presetPrompts = {
     'lawyer': {
@@ -165,44 +176,48 @@ app.post('/init', async (req, res) => {
             }
         ];
 
-        // Get response from Groq
-        const chatCompletion = await groq.chat.completions.create({
-            messages: messages,
-            model: "llama-3.1-70b-versatile",
-            temperature: 0.7,
-            max_tokens: 1024
-        });
-
-        let botResponse = chatCompletion.choices[0].message.content;
-        
-        // Clean up markdown formatting
-        botResponse = botResponse.replace(/\*\*/g, '').replace(/\*/g, '');
-
-        // Store in chat history
-        chatHistory.set(sessionId, [
-            { role: "system", content: roleConfig.system },
-            { role: "user", content: "Hello, could you introduce yourself?" },
-            { role: "assistant", content: botResponse }
-        ]);
-
-        // Generate audio if needed
-        let audioChunks = [];
         try {
-            const audioBuffer = await generateSpeech(botResponse, {}, roleToVoice[role]);
-            const base64 = audioBuffer.toString('base64');
-            audioChunks = [`data:audio/mpeg;base64,${base64}`];
+            // Get response from Groq
+            const chatCompletion = await groq.chat.completions.create({
+                messages: messages,
+                model: "llama-3.1-70b-versatile",
+                temperature: 0.7,
+                max_tokens: 1024
+            });
+
+            let botResponse = chatCompletion.choices[0].message.content;
+            
+            // Clean up markdown formatting
+            botResponse = botResponse.replace(/\*\*/g, '').replace(/\*/g, '');
+
+            // Store in chat history
+            chatHistory.set(sessionId, [
+                { role: "system", content: roleConfig.system },
+                { role: "user", content: "Hello, could you introduce yourself?" },
+                { role: "assistant", content: botResponse }
+            ]);
+
+            // Generate audio if needed
+            let audioData = null;
+            if (roleToVoice[role]) {
+                try {
+                    audioData = await generateSpeech(botResponse, {}, roleToVoice[role]);
+                } catch (error) {
+                    console.error('Error generating speech:', error);
+                }
+            }
+
+            res.json({
+                message: botResponse,
+                audioData: audioData
+            });
         } catch (error) {
-            console.error('Error generating speech:', error);
+            console.error('Error in chat completion:', error);
+            res.status(500).json({ error: 'Error initializing AI role. Please try again.' });
         }
-
-        res.json({
-            message: botResponse,
-            audioChunks: audioChunks
-        });
-
     } catch (error) {
-        console.error('Error in init endpoint:', error);
-        res.status(500).json({ error: 'An error occurred while initializing the chat' });
+        console.error('Error in /init:', error);
+        res.status(500).json({ error: 'Error initializing chat session' });
     }
 });
 
