@@ -11,10 +11,5 @@
             "src": "/(.*)",
             "dest": "server.js"
         }
-    ],
-    "env": {
-        "GROQ_API_KEY": "@groq_api_key",
-        "ELEVENLABS_API_KEY": "@elevenlabs_api_key",
-        "ELEVENLABS_VOICE_ID": "@elevenlabs_voice_id"
-    }
+    ]
 }
