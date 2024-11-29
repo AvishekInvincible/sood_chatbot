@@ -749,11 +749,26 @@
             }
         }
 
+        // Play audio function
+        function playAudio(audioUrl) {
+            if (!audioUrl) return;
+            
+            const audio = new Audio(audioUrl);
+            audio.onerror = (e) => {
+                console.error('Audio playback error:', e);
+            };
+            
+            audio.play().catch(error => {
+                console.error('Error playing audio:', error);
+            });
+        }
+
         async function sendMessage(text) {
             if (!text) return;
 
-            // Clear input
+            // Clear input and disable send button
             messageInput.value = '';
+            sendButton.disabled = true;
             
             // Add user message to chat
             addMessage(text, 'user');
@@ -773,7 +788,11 @@
                         sessionId: 'session-' + Date.now(),
                         selectedRole: selectedRole,
                         ttsEnabled: document.getElementById('ttsToggle').checked,
-                        voiceId: document.getElementById('voiceSelect').value
+                        voiceId: document.getElementById('voiceSelect').value,
+                        voiceSettings: {
+                            stability: 0.5,
+                            similarity_boost: 0.5
+                        }
                     })
                 });
 
@@ -786,11 +805,11 @@
                     
                     if (response.status === 429) {
                         errorMessage += ' Please wait a moment before trying again.';
-                        // Disable the send button temporarily
-                        sendButton.disabled = true;
                         setTimeout(() => {
                             sendButton.disabled = false;
-                        }, 60000); // Re-enable after 1 minute
+                        }, 60000);
+                    } else {
+                        sendButton.disabled = false;
                     }
                     
                     addMessage(errorMessage, 'error');
@@ -798,22 +817,21 @@
                 }
 
                 const data = await response.json();
+                sendButton.disabled = false;
                 
                 // Add bot response to chat
                 if (data.reply) {
                     addMessage(data.reply, 'assistant');
-                }
-
-                // Play audio if available
-                if (data.audioUrl) {
-                    const audio = new Audio(data.audioUrl);
-                    audio.play().catch(error => {
-                        console.error('Error playing audio:', error);
-                    });
+                    
+                    // Play audio if available
+                    if (data.audioUrl) {
+                        playAudio(data.audioUrl);
+                    }
                 }
             } catch (error) {
                 console.error('Error:', error);
                 removeTypingIndicator();
+                sendButton.disabled = false;
                 addMessage('Sorry, I encountered an error. Please try again.', 'error');
             }
         }

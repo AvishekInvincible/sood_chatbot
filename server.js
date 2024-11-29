@@ -73,74 +73,68 @@ app.get('/health', (req, res) => {
     res.status(200).json({ status: 'OK' });
 });
 
+// Function to generate speech
 async function generateSpeech(text, voiceSettings = {}, voiceId) {
-    // Use default voice ID if none provided
-    const selectedVoiceId = voiceId || process.env.ELEVENLABS_VOICE_ID;
-    
-    if (!selectedVoiceId) {
-        throw new Error('Voice ID is required. Please set ELEVENLABS_VOICE_ID in .env or provide a voice ID.');
-    }
-
-    const response = await fetch(
-        `https://api.elevenlabs.io/v1/text-to-speech/${selectedVoiceId}`,
-        {
+    try {
+        const response = await fetch('https://api.elevenlabs.io/v1/text-to-speech/' + voiceId, {
             method: 'POST',
             headers: {
                 'Accept': 'audio/mpeg',
                 'Content-Type': 'application/json',
-                'xi-api-key': process.env.ELEVENLABS_API_KEY,
+                'xi-api-key': process.env.ELEVEN_LABS_API_KEY
             },
             body: JSON.stringify({
-                text: text,
-
-
-                model_id: 'eleven_turbo_v2',
+                text,
+                model_id: "eleven_monolingual_v1",
                 voice_settings: {
                     stability: voiceSettings.stability || 0.5,
                     similarity_boost: voiceSettings.similarity_boost || 0.5
                 }
-            }),
+            })
+        });
+
+        if (!response.ok) {
+            throw new Error(`ElevenLabs API error: ${response.status}`);
         }
-    );
 
-    if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ detail: response.statusText }));
-        throw new Error(`ElevenLabs API error: ${errorData.detail || response.statusText}`);
+        const audioBuffer = await response.arrayBuffer();
+        const base64Audio = Buffer.from(audioBuffer).toString('base64');
+        return `data:audio/mpeg;base64,${base64Audio}`;
+    } catch (error) {
+        console.error('Error generating speech:', error);
+        return null;
     }
-
-    const audioBuffer = await response.arrayBuffer();
-    return Buffer.from(audioBuffer);
 }
 
 // Preset prompts for different roles
 const presetPrompts = {
     'lawyer': {
         name: 'Saul Goodman',
-        system: "You are Saul Goodman, working for SOOD. You're a charismatic and resourceful lawyer known for your creative legal solutions and catchy slogan 'Better Call Saul'. You have a colorful personality and aren't afraid to think outside the box. Never mention being an 'AI assistant' - just be Saul. Use your signature wit and charm while staying professional enough to handle serious legal matters. Always introduce yourself as Saul Goodman and occasionally use your catchphrase."
+        system: "You are Saul Goodman. Keep responses under 50 words. Be direct and witty. Use 'Better Call Saul' catchphrase occasionally. Focus on practical legal advice while maintaining your signature charm."
     },
     'doctor': {
         name: 'Dr. Sarah Chen',
-        system: "You are Dr. Sarah Chen, working for SOOD. You are a board-certified physician with expertise in internal medicine and preventive healthcare. Never mention being an 'AI assistant' - just be Dr. Chen. Provide clear, accurate medical information while maintaining a compassionate and professional tone."
+        system: "You are Dr. Sarah Chen. Keep responses under 50 words. Provide clear, concise medical information. Be professional yet compassionate. Focus on practical health guidance."
     },
     'tutor': {
         name: 'Professor Alex Thompson',
-        system: "You are Professor Alex Thompson, working for SOOD. You are an experienced educator with expertise in multiple subjects including mathematics, sciences, and literature. Never mention being an 'AI assistant' - just be Professor Thompson. Explain concepts clearly and encourage active learning through questions and examples."
+        system: "You are Professor Alex Thompson. Keep responses under 50 words. Explain concepts clearly and simply. Use examples when needed. Focus on key learning points."
     },
     'engineer': {
         name: 'Dr. Michael Zhang',
-        system: "You are Dr. Michael Zhang, working for SOOD. You are a senior software engineer with 15 years of experience in multiple programming languages and software architectures. Never mention being an 'AI assistant' - just be Dr. Zhang. Provide clear, practical coding advice and explain technical concepts in accessible terms."
+        system: "You are Dr. Michael Zhang. Keep responses under 50 words. Provide practical coding and technical advice. Use simple explanations for complex concepts."
     },
     'financial': {
         name: 'Emma Richardson',
-        system: "You are Emma Richardson, working for SOOD. You are a certified financial advisor with expertise in personal finance, investments, and wealth management. Never mention being an 'AI assistant' - just be Emma Richardson. Provide clear financial guidance while emphasizing the importance of personal research."
+        system: "You are Emma Richardson. Keep responses under 50 words. Give clear financial advice. Focus on practical money management tips. Emphasize important financial concepts briefly."
     },
     'writer': {
         name: 'Isabella Martinez',
-        system: "You are Isabella Martinez, working for SOOD. You are an accomplished author and creative writing expert with experience across various genres. Never mention being an 'AI assistant' - just be Isabella Martinez. Provide guidance on storytelling, character development, and writing techniques with an encouraging approach."
+        system: "You are Isabella Martinez. Keep responses under 50 words. Provide concise writing advice. Focus on key storytelling elements. Give practical tips for improvement."
     },
     'tax': {
         name: 'William Turner',
-        system: "You are William Turner, working for SOOD. You are a certified tax specialist with over 15 years of experience in tax planning, compliance, and advisory services. Never mention being an 'AI assistant' - just be William Turner. You specialize in helping clients navigate complex tax regulations, optimize their tax positions, and ensure full compliance with tax laws. Always emphasize the importance of proper documentation and staying within legal boundaries."
+        system: "You are William Turner. Keep responses under 50 words. Provide clear tax advice. Focus on compliance and optimization. Explain complex tax concepts simply."
     }
 };
 
@@ -227,40 +221,36 @@ app.post('/chat', async (req, res) => {
         // Get role configuration
         const roleConfig = selectedRole && presetPrompts[selectedRole] 
             ? presetPrompts[selectedRole]
-            : { 
-                name: 'SAUL GOODMAN',
-                system: "You are Saul Goodman, working for SOOD. You're a charismatic and resourceful lawyer known for your creative legal solutions and catchy slogan 'Better Call Saul'. You have a colorful personality and aren't afraid to think outside the box. Never mention being an 'AI assistant' - just be Saul. Use your signature wit and charm while staying professional enough to handle serious legal matters. Always introduce yourself as Saul Goodman and occasionally use your catchphrase."
-            };
+            : presetPrompts['lawyer']; // Default to Saul Goodman
 
         try {
             const completion = await groq.chat.completions.create({
                 messages: [
-                    { role: "system", content: roleConfig.system },
-                    ...history,
+                    { role: "system", content: roleConfig.system + " Always be concise and direct." },
+                    ...history.slice(-4), // Keep only last 2 exchanges for context
                     { role: "user", content: message }
                 ],
                 model: "mixtral-8x7b-32768",
                 temperature: 0.7,
-                max_tokens: 1024,
+                max_tokens: 100, // Limit token length
                 top_p: 1,
                 stream: false
             });
 
-            const reply = completion.choices[0]?.message?.content || "I apologize, but I couldn't generate a response at the moment.";
+            const reply = completion.choices[0]?.message?.content || "Sorry, I couldn't generate a response.";
 
-            // Update chat history
+            // Update chat history (keep only last 3 exchanges)
             history.push({ role: "user", content: message });
             history.push({ role: "assistant", content: reply });
-            chatHistory.set(sessionId, history);
+            chatHistory.set(sessionId, history.slice(-6));
 
             // Generate speech if TTS is enabled
             let audioUrl = null;
-            if (ttsEnabled) {
+            if (ttsEnabled && voiceId) {
                 try {
                     audioUrl = await generateSpeech(reply, voiceSettings, voiceId);
                 } catch (error) {
                     console.error('Speech generation error:', error);
-                    // Continue without audio if speech generation fails
                 }
             }
 
@@ -268,17 +258,15 @@ app.post('/chat', async (req, res) => {
         } catch (error) {
             console.error('Groq API error:', error);
             
-            // Check if it's a rate limit error
             if (error.message && error.message.includes('rate limit exceeded')) {
                 return res.status(429).json({
-                    error: "I'm currently experiencing high demand. Please try again in a few minutes. This helps ensure everyone can access the service fairly.",
-                    retryAfter: 60 // Suggest retry after 1 minute
+                    error: "Rate limit reached. Please try again in a few minutes.",
+                    retryAfter: 60
                 });
             }
             
-            // Handle other API errors
             res.status(500).json({
-                error: "I'm having trouble processing your request right now. Please try again in a moment.",
+                error: "Service temporarily unavailable. Please try again.",
                 details: process.env.NODE_ENV === 'development' ? error.message : undefined
             });
         }
