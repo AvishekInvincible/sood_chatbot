@@ -6,6 +6,12 @@ import dotenv from 'dotenv';
 import rateLimit from 'express-rate-limit';
 import multer from 'multer';
 import FormData from 'form-data';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+// Get directory name in ES module
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Load environment variables
 dotenv.config();
@@ -40,7 +46,7 @@ const chatHistory = new Map();
 // Middleware
 app.use(cors());
 app.use(express.json());
-app.use(express.static('public'));
+app.use('/static', express.static(path.join(__dirname, 'public')));
 app.use(limiter);
 
 // Configure multer to use memory storage instead of disk storage
@@ -53,7 +59,7 @@ const uploadMiddleware = multer({
 
 // Serve index.html for root route
 app.get('/', (req, res) => {
-    res.sendFile('index.html', { root: './public' });
+    res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
 // Error handling middleware
@@ -215,11 +221,10 @@ app.post('/chat', async (req, res) => {
             return res.status(400).json({ error: 'Message is required' });
         }
 
-        // Get or create chat history for this session
-        let history = chatHistory.get(sessionId) || [];
-        const isFirstMessage = history.length === 0;
-        
-        // Get the appropriate system prompt based on the selected role
+        // Get chat history for this session
+        const history = chatHistory.get(sessionId) || [];
+
+        // Get role configuration
         const roleConfig = selectedRole && presetPrompts[selectedRole] 
             ? presetPrompts[selectedRole]
             : { 
@@ -227,86 +232,59 @@ app.post('/chat', async (req, res) => {
                 system: "You are Saul Goodman, working for SOOD. You're a charismatic and resourceful lawyer known for your creative legal solutions and catchy slogan 'Better Call Saul'. You have a colorful personality and aren't afraid to think outside the box. Never mention being an 'AI assistant' - just be Saul. Use your signature wit and charm while staying professional enough to handle serious legal matters. Always introduce yourself as Saul Goodman and occasionally use your catchphrase."
             };
 
-        // Prepare messages array with system message and history
-        const messages = [
-            {
-                role: "system",
-                content: roleConfig.system
-            },
-            ...history,
-            { role: "user", content: message }
-        ];
+        try {
+            const completion = await groq.chat.completions.create({
+                messages: [
+                    { role: "system", content: roleConfig.system },
+                    ...history,
+                    { role: "user", content: message }
+                ],
+                model: model || "mixtral-8x7b-32768",
+                temperature: 0.7,
+                max_tokens: 1024,
+                top_p: 1,
+                stream: false
+            });
 
-        // Get response from Groq
-        const chatCompletion = await groq.chat.completions.create({
-            messages: messages,
-            model: model || "llama-3.1-70b-versatile",
-            temperature: 0.7,
-            max_tokens: 1024
-        });
+            const reply = completion.choices[0]?.message?.content || "I apologize, but I couldn't generate a response at the moment.";
 
-        let botResponse = chatCompletion.choices[0].message.content;
-        
-        // If this is the first message, ensure the AI introduces itself
-        if (isFirstMessage && !botResponse.includes(roleConfig.name)) {
-            botResponse = `Hello! I'm ${roleConfig.name}. ${botResponse}`;
-        }
+            // Update chat history
+            history.push({ role: "user", content: message });
+            history.push({ role: "assistant", content: reply });
+            chatHistory.set(sessionId, history);
 
-        // Clean up markdown formatting
-        botResponse = botResponse.replace(/\*\*/g, '').replace(/\*/g, '');
-
-        // Update chat history
-        history = [...history, 
-            { role: "user", content: message },
-            { role: "assistant", content: botResponse }
-        ].slice(-10);
-        
-        chatHistory.set(sessionId, history);
-
-        // Only generate speech if TTS is enabled
-        let audioChunks = [];
-        if (ttsEnabled) {
-            try {
-                // Split response into chunks for better audio processing
-                const words = botResponse.split(' ');
-                const chunks = [];
-                let currentChunk = [];
-
-                for (const word of words) {
-                    currentChunk.push(word);
-                    if (currentChunk.length >= 50) {
-                        chunks.push(currentChunk.join(' '));
-                        currentChunk = [];
-                    }
+            // Generate speech if TTS is enabled
+            let audioUrl = null;
+            if (ttsEnabled) {
+                try {
+                    audioUrl = await generateSpeech(reply, voiceSettings, voiceId);
+                } catch (error) {
+                    console.error('Speech generation error:', error);
+                    // Continue without audio if speech generation fails
                 }
-                if (currentChunk.length > 0) {
-                    chunks.push(currentChunk.join(' '));
-                }
-
-                // Generate audio for each chunk
-                audioChunks = await Promise.all(
-                    chunks.map(chunk => generateSpeech(chunk, voiceSettings, voiceId))
-                );
-
-                // Convert to base64
-                audioChunks = audioChunks.map(buffer => {
-                    const base64 = buffer.toString('base64');
-                    return `data:audio/mpeg;base64,${base64}`;
-                });
-            } catch (error) {
-                console.error('Error generating speech:', error);
-                // Don't fail the whole request if speech generation fails
             }
+
+            res.json({ reply, audioUrl });
+        } catch (error) {
+            console.error('Groq API error:', error);
+            
+            // Check if it's a rate limit error
+            if (error.message && error.message.includes('rate limit exceeded')) {
+                return res.status(429).json({
+                    error: "I'm currently experiencing high demand. Please try again in a few minutes. This helps ensure everyone can access the service fairly.",
+                    retryAfter: 60 // Suggest retry after 1 minute
+                });
+            }
+            
+            // Handle other API errors
+            res.status(500).json({
+                error: "I'm having trouble processing your request right now. Please try again in a moment.",
+                details: process.env.NODE_ENV === 'development' ? error.message : undefined
+            });
         }
-
-        res.json({
-            text: botResponse,
-            audioChunks: audioChunks
-        });
-
     } catch (error) {
-        console.error('Error in chat endpoint:', error);
-        res.status(500).json({ error: 'An error occurred while processing your request' });
+        console.error('Server error:', error);
+        res.status(500).json({ error: 'An unexpected error occurred' });
     }
 });
 

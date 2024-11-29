@@ -100,6 +100,12 @@
             background: white;
         }
 
+        .error-message {
+            margin: auto;
+            background: #ff4444;
+            color: white;
+        }
+
         @keyframes slideIn {
             from {
                 opacity: 0;
@@ -744,14 +750,15 @@
         }
 
         async function sendMessage(text) {
-            const message = text || messageInput.value;
-            if (!message) return;
+            if (!text) return;
 
-            if (!text) {
-                messageInput.value = '';
-            }
-
-            addMessage(message, 'user');
+            // Clear input
+            messageInput.value = '';
+            
+            // Add user message to chat
+            addMessage(text, 'user');
+            
+            // Show typing indicator
             addTypingIndicator();
 
             try {
@@ -765,7 +772,7 @@
                         'Content-Type': 'application/json',
                     },
                     body: JSON.stringify({
-                        message,
+                        message: text,
                         sessionId: 'default-session',
                         model: selectedModel,
                         voiceId: selectedVoiceId,
@@ -774,21 +781,40 @@
                     }),
                 });
 
+                // Remove typing indicator
+                removeTypingIndicator();
+
                 if (!response.ok) {
-                    throw new Error('Network response was not ok');
+                    const errorData = await response.json();
+                    let errorMessage = errorData.error || 'An error occurred';
+                    
+                    if (response.status === 429) {
+                        errorMessage += ' Please wait a moment before trying again.';
+                        // Disable the send button temporarily
+                        sendButton.disabled = true;
+                        setTimeout(() => {
+                            sendButton.disabled = false;
+                        }, 60000); // Re-enable after 1 minute
+                    }
+                    
+                    addMessage(errorMessage, 'error');
+                    return;
                 }
 
                 const data = await response.json();
-                removeTypingIndicator();
+                
+                // Add bot response to chat
                 addMessage(data.text, 'bot');
 
-                stopAudio();
-                audioQueue = [...data.audioChunks];
-                playNextInQueue();
+                // Play audio if available
+                if (data.audioChunks) {
+                    audioQueue = [...data.audioChunks];
+                    playNextInQueue();
+                }
             } catch (error) {
                 console.error('Error:', error);
                 removeTypingIndicator();
-                addMessage('Sorry, there was an error processing your request.', 'bot');
+                addMessage('Sorry, I encountered an error. Please try again.', 'error');
             }
         }
 
@@ -796,7 +822,7 @@
             const chatContainer = document.querySelector('.chat-container');
             const messageDiv = document.createElement('div');
             messageDiv.classList.add('message');
-            messageDiv.classList.add(sender === 'user' ? 'user-message' : 'bot-message');
+            messageDiv.classList.add(sender === 'user' ? 'user-message' : sender === 'bot' ? 'bot-message' : 'error-message');
             messageDiv.textContent = text;
             chatContainer.appendChild(messageDiv);
             chatContainer.scrollTop = chatContainer.scrollHeight;
