@@ -108,15 +108,15 @@ async function generateSpeech(text, voiceSettings = {}, voiceId) {
 
 // Voice mappings for different roles
 const roleToVoice = {
-    'lawyer': 'UgBBYS2sOqTuMpoF3BR0', // Josh
-
+    'saul': 'UgBBYS2sOqTuMpoF3BR0' // Saul Goodman
 };
 
 // Preset prompts for different roles
 const presetPrompts = {
-    'lawyer': {
+    'saul': {
         name: 'Saul Goodman',
-        system: "You are Saul Goodman. Keep responses under 50 words. Be direct and witty. Use 'Better Call Saul' catchphrase occasionally. Focus on practical legal advice while maintaining your signature charm."}
+        system: "You are Saul Goodman. Keep responses under 50 words. Be direct and witty. Use 'Better Call Saul' catchphrase occasionally. Focus on practical legal advice while maintaining your signature charm."
+    }
 };
 
 // Initialize chat sessions with role-specific context
