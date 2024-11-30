@@ -85,7 +85,7 @@ async function generateSpeech(text, voiceSettings = {}, voiceId) {
             },
             body: JSON.stringify({
                 text,
-                model_id: "eleven_monolingual_v1",
+                model_id: "eleven_turbo_v2",
                 voice_settings: {
                     stability: voiceSettings.stability || 0.5,
                     similarity_boost: voiceSettings.similarity_boost || 0.5
@@ -108,45 +108,15 @@ async function generateSpeech(text, voiceSettings = {}, voiceId) {
 
 // Voice mappings for different roles
 const roleToVoice = {
-    'lawyer': 'ErXwobaYiN019PkySvjV', // Josh
-    'doctor': 'EXAVITQu4vr4xnSDxMaL', // Bella
-    'tutor': '21m00Tcm4TlvDq8ikWAM', // Rachel
-    'engineer': 'VR6AewLTigWG4xSOukaG', // Adam
-    'financial': 'EXAVITQu4vr4xnSDxMaL', // Bella
-    'writer': '21m00Tcm4TlvDq8ikWAM', // Rachel
-    'tax': 'ErXwobaYiN019PkySvjV' // Josh
+    'lawyer': 'UgBBYS2sOqTuMpoF3BR0', // Josh
+
 };
 
 // Preset prompts for different roles
 const presetPrompts = {
     'lawyer': {
         name: 'Saul Goodman',
-        system: "You are Saul Goodman. Keep responses under 50 words. Be direct and witty. Use 'Better Call Saul' catchphrase occasionally. Focus on practical legal advice while maintaining your signature charm."
-    },
-    'doctor': {
-        name: 'Dr. Sarah Chen',
-        system: "You are Dr. Sarah Chen. Keep responses under 50 words. Provide clear, concise medical information. Be professional yet compassionate. Focus on practical health guidance."
-    },
-    'tutor': {
-        name: 'Professor Alex Thompson',
-        system: "You are Professor Alex Thompson. Keep responses under 50 words. Explain concepts clearly and simply. Use examples when needed. Focus on key learning points."
-    },
-    'engineer': {
-        name: 'Dr. Michael Zhang',
-        system: "You are Dr. Michael Zhang. Keep responses under 50 words. Provide practical coding and technical advice. Use simple explanations for complex concepts."
-    },
-    'financial': {
-        name: 'Emma Richardson',
-        system: "You are Emma Richardson. Keep responses under 50 words. Give clear financial advice. Focus on practical money management tips. Emphasize important financial concepts briefly."
-    },
-    'writer': {
-        name: 'Isabella Martinez',
-        system: "You are Isabella Martinez. Keep responses under 50 words. Provide concise writing advice. Focus on key storytelling elements. Give practical tips for improvement."
-    },
-    'tax': {
-        name: 'William Turner',
-        system: "You are William Turner. Keep responses under 50 words. Provide clear tax advice. Focus on compliance and optimization. Explain complex tax concepts simply."
-    }
+        system: "You are Saul Goodman. Keep responses under 50 words. Be direct and witty. Use 'Better Call Saul' catchphrase occasionally. Focus on practical legal advice while maintaining your signature charm."}
 };
 
 // Initialize chat sessions with role-specific context
@@ -234,20 +204,22 @@ app.post('/chat', async (req, res) => {
         const history = chatHistory.get(sessionId) || [];
 
         // Get role configuration
-        const roleConfig = selectedRole && presetPrompts[selectedRole] 
-            ? presetPrompts[selectedRole]
-            : presetPrompts['lawyer']; // Default to Saul Goodman
+        if (!selectedRole || !presetPrompts[selectedRole]) {
+            return res.status(400).json({ error: 'Invalid role selected' });
+        }
+
+        const roleConfig = presetPrompts[selectedRole];
 
         try {
             const completion = await groq.chat.completions.create({
                 messages: [
                     { role: "system", content: roleConfig.system + " Always be concise and direct." },
-                    ...history.slice(-4), // Keep only last 2 exchanges for context
+                    ...history.slice(-4),
                     { role: "user", content: message }
                 ],
-                model: "mixtral-8x7b-32768",
+                model: "llama-3.1-70b-versatile",
                 temperature: 0.7,
-                max_tokens: 100, // Limit token length
+                max_tokens: 1000,
                 top_p: 1,
                 stream: false
             });
